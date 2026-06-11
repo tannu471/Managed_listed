@@ -6,17 +6,8 @@ from contextlib import closing
 from datetime import timedelta
 from functools import wraps
 
-from flask import (
-    Flask,
-    flash,
-    g,
-    redirect,
-    render_template,
-    request,
-    session,
-    url_for,
-)
-from werkzeug.security import generate_password_hash, check_password_hash
+from authlib.integrations.flask_client import OAuth
+from flask import Flask, flash, g, redirect, render_template, request, session, url_for
 from werkzeug.utils import secure_filename
 
 
@@ -63,6 +54,17 @@ def create_app() -> Flask:
 
         return wrapped
 
+    oauth = OAuth(app)
+    oauth.register(
+        name="google",
+        client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+        client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+        access_token_url="https://oauth2.googleapis.com/token",
+        authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
+        api_base_url="https://www.googleapis.com/oauth2/v1/",
+        client_kwargs={"scope": "openid email profile"},
+    )
+
     @app.route("/")
     def index():
         q = (request.args.get("q") or "").strip()
@@ -78,10 +80,10 @@ def create_app() -> Flask:
             filters.append("user_id = ?")
             params.append(user_id)
         else:
-            filters.append("1=0")  # public viewing; no saving data, no listing
+            filters.append("1=0")  # Public view: show no rows (and no data saving)
 
         if q:
-            # search by character_name OR anime_name
+            # Search by character_name OR anime_name (case-insensitive)
             filters.append("(LOWER(character_name) LIKE ? OR LOWER(anime_name) LIKE ?)")
             q_like = f"%{q.lower()}%"
             params.extend([q_like, q_like])
@@ -111,29 +113,56 @@ def create_app() -> Flask:
             gender_filter=gender if gender else "All",
         )
 
-    @app.route("/login", methods=["GET", "POST"])
+    @app.route("/login")
     def login():
-        if request.method == "POST":
-            email = (request.form.get("email") or "").strip().lower()
-            password = request.form.get("password") or ""
-            if not email or not password:
-                flash("Email and password are required.", "error")
-                return redirect(url_for("login"))
-
-            user = g.db.execute(
-                "SELECT id, password_hash FROM users WHERE email = ?",
-                (email,),
-            ).fetchone()
-
-            if not user or not check_password_hash(user["password_hash"], password):
-                flash("Invalid email or password.", "error")
-                return redirect(url_for("login"))
-
-            session.permanent = True
-            session["user_id"] = user["id"]
-            return redirect(url_for("index"))
-
         return render_template("login.html")
+
+    @app.route("/login/google")
+    def google_login():
+        if not os.environ.get("GOOGLE_CLIENT_ID") or not os.environ.get("GOOGLE_CLIENT_SECRET"):
+            flash("Google OAuth is not configured on the server.", "error")
+            return redirect(url_for("login"))
+
+        redirect_uri = url_for("google_callback", _external=True)
+        return oauth.google.authorize_redirect(redirect_uri)
+
+    @app.route("/callback/google")
+    def google_callback():
+        token = oauth.google.authorize_access_token()
+        _ = token  # unused but kept for clarity
+        userinfo = oauth.google.get("https://openidconnect.googleapis.com/v1/userinfo")
+
+        email = (userinfo.json().get("email") or "").strip().lower()
+        sub = str(userinfo.json().get("sub") or "")
+
+        if not email or not sub:
+            flash("Failed to authenticate with Google.", "error")
+            return redirect(url_for("login"))
+
+        # Create user on first Google login (recommended)
+        existing = g.db.execute(
+            "SELECT id FROM users WHERE email = ? OR google_sub = ?",
+            (email, sub),
+        ).fetchone()
+
+        if existing:
+            user_id = existing["id"]
+            g.db.execute(
+                "UPDATE users SET email = ?, google_sub = ? WHERE id = ?",
+                (email, sub, user_id),
+            )
+            g.db.commit()
+        else:
+            cur = g.db.execute(
+                "INSERT INTO users (email, google_sub) VALUES (?, ?)",
+                (email, sub),
+            )
+            user_id = cur.lastrowid
+            g.db.commit()
+
+        session.permanent = True
+        session["user_id"] = user_id
+        return redirect(url_for("index"))
 
     @app.route("/logout")
     def logout():
@@ -211,7 +240,7 @@ def create_app() -> Flask:
             flash("Invalid image filename.", "error")
             return redirect(url_for("index"))
 
-        # enforce unique character_name per user
+        # Enforce unique character_name per user
         dup = g.db.execute(
             "SELECT id FROM characters WHERE user_id = ? AND character_name = ?",
             (user_id, character_name),
@@ -220,14 +249,12 @@ def create_app() -> Flask:
             flash("Character name already exists.", "error")
             return redirect(url_for("index"))
 
-        # compute next display_order
         max_order = g.db.execute(
             "SELECT COALESCE(MAX(display_order), 0) AS m FROM characters WHERE user_id = ?",
             (user_id,),
         ).fetchone()["m"]
         display_order = int(max_order) + 1
 
-        # insert first, then save image; if save fails, rollback
         image_db_name = None
         try:
             cur = g.db.execute(
@@ -269,8 +296,12 @@ def create_app() -> Flask:
             return redirect(url_for("index"))
 
         image = row["image"]
-        g.db.execute("DELETE FROM characters WHERE user_id = ? AND id = ?", (user_id, record_id))
+        g.db.execute(
+            "DELETE FROM characters WHERE user_id = ? AND id = ?",
+            (user_id, record_id),
+        )
         g.db.commit()
+
         safe_delete_image(image)
         renumber_for_user(user_id)
         flash("Character deleted.", "success")
@@ -286,6 +317,7 @@ def create_app() -> Flask:
             return redirect(url_for("index"))
 
         current_order = row["display_order"]
+
         if action == "up":
             other = g.db.execute(
                 """
@@ -313,7 +345,7 @@ def create_app() -> Flask:
             flash("No more moves available.", "error")
             return redirect(url_for("index"))
 
-        # swap orders
+        # swap display_order values
         g.db.execute(
             "UPDATE characters SET display_order = ? WHERE id = ? AND user_id = ?",
             (other["display_order"], record_id, user_id),
@@ -342,16 +374,13 @@ def create_app() -> Flask:
             if not new_name:
                 flash("Character name is required.", "error")
                 return redirect(url_for("update_character", record_id=record_id))
-
             if not new_anime:
                 flash("Anime name is required.", "error")
                 return redirect(url_for("update_character", record_id=record_id))
-
             if new_gender not in ALLOWED_GENDERS:
                 flash("Gender is required.", "error")
                 return redirect(url_for("update_character", record_id=record_id))
 
-            # unique constraint per user (excluding current record)
             dup = g.db.execute(
                 """
                 SELECT id FROM characters
@@ -370,10 +399,10 @@ def create_app() -> Flask:
             if file and file.filename:
                 filename = secure_filename(file.filename)
                 image_ext = os.path.splitext(filename)[1].lower() or ".png"
+                image_ext = image_ext if image_ext.startswith(".") else f".{image_ext}"
                 new_image_db_name = f"user{user_id}_char{record_id}{image_ext}"
                 file.save(os.path.join(UPLOAD_DIR, new_image_db_name))
 
-            # update fields
             g.db.execute(
                 """
                 UPDATE characters
@@ -390,14 +419,7 @@ def create_app() -> Flask:
             flash("Character updated.", "success")
             return redirect(url_for("index"))
 
-        # GET
         return render_template("update.html", record=row)
-
-    @app.endpoint("update_character")
-    def update_character_endpoint():
-        # This endpoint name is only here for url_for symmetry in code above.
-        # It is never called.
-        raise NotImplementedError
 
     return app
 
@@ -414,15 +436,19 @@ def init_db():
         conn.execute("PRAGMA foreign_keys = ON")
         conn.row_factory = sqlite3.Row
 
+        # Updated users table for Google auth
+        # (We keep legacy password_hash column if it already exists.)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL
+                password_hash TEXT,
+                google_sub TEXT UNIQUE
             )
             """
         )
+
 
         conn.execute(
             """
@@ -439,17 +465,13 @@ def init_db():
             """
         )
 
-        # create a default user for convenience in dev; production should use real registration
-        default_email = os.environ.get("DEFAULT_EMAIL", "admin@example.com").strip().lower()
-        default_password = os.environ.get("DEFAULT_PASSWORD", "admin123").strip()
-        existing = conn.execute("SELECT id FROM users WHERE email = ?", (default_email,)).fetchone()
-        if not existing:
-            pw_hash = generate_password_hash(default_password)
-            conn.execute(
-                "INSERT INTO users (email, password_hash) VALUES (?, ?)",
-                (default_email, pw_hash),
-            )
+        # Ensure columns exist even if DB was created earlier with a password_hash schema.
+        # (SQLite doesn't support ALTER TABLE ADD UNIQUE constraints cleanly, but adding columns is fine.)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+        if "google_sub" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN google_sub TEXT")
 
+        # If the old users table had password_hash, ignore it. Don't create default users.
         conn.commit()
 
 

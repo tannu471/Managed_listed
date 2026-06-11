@@ -134,6 +134,10 @@ body{
   border-radius:12px;
   margin:10px 0;
 }
+
+/* Keep login button centered on mobile */
+.login-form{display:flex; justify-content:center;}
+
 .flash-error{border-color:rgba(239,68,68,.45); background:rgba(239,68,68,.12); color:#fecaca;}
 .flash-success{border-color:rgba(16,185,129,.45); background:rgba(16,185,129,.12); color:#bbf7d0;}
 

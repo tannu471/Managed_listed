@@ -21,18 +21,14 @@
         {% endif %}
       {% endwith %}
 
-      <form method="post" action="{{ url_for('login') }}" class="login-form">
-        <label>Email</label>
-        <input class="input" type="email" name="email" placeholder="admin@example.com" required />
-
-        <label>Password</label>
-        <input class="input" type="password" name="password" placeholder="admin123" required />
-
-        <button type="submit" class="btn btn-primary">Login</button>
-      </form>
+      <div class="login-form">
+        <a class="btn btn-primary" href="{{ url_for('google_login') }}">
+          Login with Google
+        </a>
+      </div>
 
       <div class="login-hint">
-        Default dev login: <b>{{ ("admin@example.com") }}</b> / <b>{{ ("admin123") }}</b>
+        Uses Google OAuth.
       </div>
     </div>
   </main>

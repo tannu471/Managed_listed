@@ -1,0 +1,23 @@
+1) Google Cloud Console
+- Create/Select a project.
+- Enable “Google+ API” / “Google Identity” via OAuth.
+- Create OAuth Consent Screen (if required).
+- Create OAuth Client ID → Application type: “Web application”.
+
+2) Add Redirect URI
+For this app, set Authorized redirect URI to:
+- https://managed-listed.onrender.com/callback/google
+(Use your actual Render domain if different.)
+
+3) Copy Credentials
+- GOOGLE_CLIENT_ID
+- GOOGLE_CLIENT_SECRET
+
+4) Render environment variables
+- GOOGLE_CLIENT_ID
+- GOOGLE_CLIENT_SECRET
+- SECRET_KEY (required for Flask sessions)
+
+Optional:
+- (none)
+
