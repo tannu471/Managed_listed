@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Name_list - Anime Character Manager</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">Name_list</div>
+    <div class="header-right">
+      {% if logged_in %}
+        <a class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
+      {% else %}
+        <a class="btn btn-primary" href="{{ url_for('login') }}">Login</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="top-section">
+      <div class="left">
+        <form class="search-form" method="get" action="{{ url_for('index') }}">
+          <input
+            type="text"
+            name="q"
+            value="{{ q }}"
+            placeholder="Search by character or anime name..."
+            class="search-input"
+          />
+          <button type="submit" class="btn btn-primary">Search</button>
+        </form>
+
+        <div class="filters">
+          {% set gf = gender_filter if gender_filter is not none else 'All' %}
+          <a class="filter-btn {% if gf == 'All' %}active{% endif %}" href="{{ url_for('index', q=q, gender='All') }}">All</a>
+          <a class="filter-btn {% if gf == 'Male' %}active{% endif %}" href="{{ url_for('index', q=q, gender='Male') }}">Male Character</a>
+          <a class="filter-btn {% if gf == 'Female' %}active{% endif %}" href="{{ url_for('index', q=q, gender='Female') }}">Female Character</a>
+        </div>
+      </div>
+
+      <div class="right">
+        {% if not logged_in %}
+          <div class="login-required">
+            <div class="login-required-title">Login Required To Add Characters</div>
+            <a class="btn btn-primary" href="{{ url_for('login') }}">Login</a>
+          </div>
+        {% else %}
+          <form class="add-form" method="post" action="{{ url_for('add_character') }}" enctype="multipart/form-data">
+            <h2 class="section-title">Add Character</h2>
+
+            <label>Character Name</label>
+            <input class="input" type="text" name="character_name" required />
+
+            <label>Anime Name</label>
+            <input class="input" type="text" name="anime_name" required />
+
+            <div class="gender-grid">
+              <label>Gender</label>
+              <div class="radio-group">
+                <label class="radio">
+                  <input type="radio" name="gender" value="Male" required /> Male
+                </label>
+                <label class="radio">
+                  <input type="radio" name="gender" value="Female" required /> Female
+                </label>
+              </div>
+            </div>
+
+            <label>Image Upload</label>
+            <input class="input" type="file" name="image" accept="image/*" required />
+
+            <button class="btn btn-green" type="submit">Add Character</button>
+            <div class="hint">Max {{ 92 }} records per account.</div>
+          </form>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="flash-area">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+    </section>
+
+    <section class="cards-section">
+      <div class="cards-header">
+        <h2>Characters</h2>
+      </div>
+
+      {% if logged_in %}
+        {% if records|length == 0 %}
+          <div class="empty">No result found</div>
+        {% else %}
+          <div class="cards-grid">
+            {% for r in records %}
+              <div class="card">
+                <div class="card-top">
+                  <div class="badge">{{ r['display_order'] }}</div>
+                  <div class="card-actions">
+                    <a class="btn btn-primary" href="{{ url_for('update_character', record_id=r['id']) }}">Update</a>
+                    <form method="post" action="{{ url_for('delete_character', record_id=r['id']) }}" onsubmit="return true;" class="inline-form">
+                      <button class="btn btn-danger" type="submit">Delete</button>
+                    </form>
+                  </div>
+                </div>
+
+                <div class="card-body">
+                  <img class="card-image" src="{{ url_for('static', filename='uploads/' ~ (r['image'] if r['image'] else '')) }}" alt="{{ r['character_name'] }}" onerror="this.style.display='none';" />
+                  <div class="meta">
+                    <div class="meta-line"><span class="k">Character Name:</span> <span class="v">{{ r['character_name'] }}</span></div>
+                    <div class="meta-line"><span class="k">Anime Name:</span> <span class="v">{{ r['anime_name'] }}</span></div>
+                    <div class="meta-line"><span class="k">Gender:</span> <span class="v">{{ r['gender'] }}</span></div>
+                  </div>
+                </div>
+
+                <div class="card-bottom">
+                  <div class="move-row">
+                    <form method="post" action="{{ url_for('move_character', action='up', record_id=r['id']) }}">
+                      <button class="btn btn-primary" type="submit">Move Up</button>
+                    </form>
+                    <form method="post" action="{{ url_for('move_character', action='down', record_id=r['id']) }}">
+                      <button class="btn btn-primary" type="submit">Move Down</button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="empty">No result found</div>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>
+

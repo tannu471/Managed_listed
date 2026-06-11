@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login - Anime Character Manager</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <main class="login-page">
+    <div class="login-card">
+      <div class="login-brand">Name_list</div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <form method="post" action="{{ url_for('login') }}" class="login-form">
+        <label>Email</label>
+        <input class="input" type="email" name="email" placeholder="admin@example.com" required />
+
+        <label>Password</label>
+        <input class="input" type="password" name="password" placeholder="admin123" required />
+
+        <button type="submit" class="btn btn-primary">Login</button>
+      </form>
+
+      <div class="login-hint">
+        Default dev login: <b>{{ ("admin@example.com") }}</b> / <b>{{ ("admin123") }}</b>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
+

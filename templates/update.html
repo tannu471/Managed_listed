@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Update Character</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">Name_list</div>
+    <div class="header-right">
+      <a class="btn btn-danger" href="{{ url_for('logout') }}">Logout</a>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="flash-area">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+    </section>
+
+    <section class="update-wrap">
+      <h2 class="section-title">Update Character</h2>
+
+      <form class="update-form" method="post" action="{{ url_for('update_character', record_id=record['id']) }}" enctype="multipart/form-data">
+        <label>Character Name</label>
+        <input class="input" type="text" name="character_name" value="{{ record['character_name'] }}" required />
+
+        <label>Anime Name</label>
+        <input class="input" type="text" name="anime_name" value="{{ record['anime_name'] }}" required />
+
+        <label>Gender</label>
+        <div class="radio-group">
+          <label class="radio">
+            <input type="radio" name="gender" value="Male" {% if record['gender']=='Male' %}checked{% endif %} required /> Male
+          </label>
+          <label class="radio">
+            <input type="radio" name="gender" value="Female" {% if record['gender']=='Female' %}checked{% endif %} required /> Female
+          </label>
+        </div>
+
+        <div class="image-preview">
+          <div class="preview-title">Current Image Preview</div>
+          <div class="preview-box">
+            {% if record['image'] %}
+              <img class="preview-img" src="{{ url_for('static', filename='uploads/' ~ record['image']) }}" alt="preview" />
+            {% else %}
+              <div class="preview-empty">No image</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <label>Choose New Image (optional)</label>
+        <input class="input" type="file" name="image" accept="image/*" />
+
+        <button class="btn btn-green" type="submit">Update Now</button>
+        <a class="btn btn-secondary" href="{{ url_for('index') }}">Back</a>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
+
