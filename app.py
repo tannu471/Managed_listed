@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import requests
 from contextlib import closing
 from datetime import timedelta
 from functools import wraps
+import requests
 from authlib.integrations.flask_client import OAuth
 from flask import Flask, flash, g, redirect, render_template, request, session, url_for
 from werkzeug.utils import secure_filename
