@@ -59,10 +59,8 @@ def create_app() -> Flask:
         name="google",
         client_id=os.environ.get("GOOGLE_CLIENT_ID"),
         client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
-        access_token_url="https://oauth2.googleapis.com/token",
-        authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
-        api_base_url="https://www.googleapis.com/oauth2/v1/",
-        client_kwargs={"scope": "openid email profile"},
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"}
     )
 
     @app.route("/")
@@ -130,10 +128,10 @@ def create_app() -> Flask:
     def google_callback():
         token = oauth.google.authorize_access_token()
         _ = token  # unused but kept for clarity
-        userinfo = oauth.google.get("https://openidconnect.googleapis.com/v1/userinfo")
+        userinfo = oauth.google.userinfo()
 
-        email = (userinfo.json().get("email") or "").strip().lower()
-        sub = str(userinfo.json().get("sub") or "")
+        email = (userinfo.get("email") or "").strip().lower()
+        sub = str(userinfo.get("sub") or "")
 
         if not email or not sub:
             flash("Failed to authenticate with Google.", "error")
@@ -453,14 +451,15 @@ def init_db():
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS characters (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                character_name TEXT UNIQUE NOT NULL,
-                anime_name TEXT NOT NULL,
-                gender TEXT NOT NULL,
-                image TEXT,
-                display_order INTEGER NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            character_name TEXT NOT NULL,
+            anime_name TEXT NOT NULL,
+            gender TEXT NOT NULL,
+            image TEXT,
+            display_order INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, character_name)
             )
             """
         )
