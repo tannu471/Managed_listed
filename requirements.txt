@@ -1,8 +1,14 @@
 Flask==3.0.3
 gunicorn==23.0.0
 Werkzeug==3.0.3
+<<<<<<< HEAD
 requests==2.32.3
 protobuf!=3.20.0
 
 
+=======
+authlib==1.7.2
+requests==2.32.3
+protobuf!=3.20.0
+>>>>>>> f18d47c70d7b2655e99ebd1c1379e3cc217f679e
 

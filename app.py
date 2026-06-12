@@ -6,10 +6,14 @@ from contextlib import closing
 from datetime import timedelta
 from functools import wraps
 import requests
+<<<<<<< HEAD
 import smtplib
 import ssl
 import secrets
 from email.mime.text import MIMEText
+=======
+from authlib.integrations.flask_client import OAuth
+>>>>>>> f18d47c70d7b2655e99ebd1c1379e3cc217f679e
 from flask import Flask, flash, g, redirect, render_template, request, session, url_for
 from werkzeug.utils import secure_filename
 
@@ -58,7 +62,18 @@ def create_app() -> Flask:
 
         return wrapped
 
+<<<<<<< HEAD
 
+=======
+    oauth = OAuth(app)
+    oauth.register(
+        name="google",
+        client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+        client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"}
+    )
+>>>>>>> f18d47c70d7b2655e99ebd1c1379e3cc217f679e
 
     @app.route("/")
     def index():
@@ -122,6 +137,7 @@ def create_app() -> Flask:
         if not otp_from or not smtp_user or not smtp_pass:
             raise RuntimeError("OTP email not configured. Set OTP_FROM_EMAIL, SMTP_USER and SMTP_PASS.")
 
+<<<<<<< HEAD
         subject = "Your OTP Code"
         body = f"Your one-time password (OTP) is: {otp}. It expires in a few minutes." \
                f"\n\nIf you didn't request this, you can ignore this email."
@@ -130,6 +146,16 @@ def create_app() -> Flask:
         msg["Subject"] = subject
         msg["From"] = otp_from
         msg["To"] = to_email
+=======
+    @app.route("/callback/google")
+    def google_callback():
+        token = oauth.google.authorize_access_token()
+        _ = token  # unused but kept for clarity
+        userinfo = oauth.google.userinfo()
+
+        email = (userinfo.get("email") or "").strip().lower()
+        sub = str(userinfo.get("sub") or "")
+>>>>>>> f18d47c70d7b2655e99ebd1c1379e3cc217f679e
 
         context = ssl.create_default_context()
         with smtplib.SMTP(smtp_host, smtp_port) as server:
