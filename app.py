@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import requests
 from contextlib import closing
 from datetime import timedelta
 from functools import wraps
-import requests
 from authlib.integrations.flask_client import OAuth
 from flask import Flask, flash, g, redirect, render_template, request, session, url_for
 from werkzeug.utils import secure_filename
@@ -22,7 +22,7 @@ MAX_RECORDS = 92
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config.update(
-        SECRET_KEY=os.environ.get("Enter_your_own_key", "dev-secret-change-me"),
+        SECRET_KEY=os.environ.get("Project_secret_json", "dev-secret-change-me"),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=timedelta(days=30),
