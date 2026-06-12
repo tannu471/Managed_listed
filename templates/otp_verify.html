@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Login - Anime Character Manager</title>
+  <title>Verify OTP - Anime Character Manager</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
@@ -22,15 +22,24 @@
       {% endwith %}
 
       <div class="login-form">
-        <a class="btn btn-primary" href="{{ url_for('login') }}">
-          Continue
-        </a>
+        <h2 class="section-title">Enter OTP</h2>
+        <form method="post" action="{{ url_for('verify_otp') }}">
+          <label>OTP</label>
+          <input class="input" type="text" name="otp" required inputmode="numeric" placeholder="123456" />
+
+          <input type="hidden" name="email" value="{{ email }}" />
+
+          <button class="btn btn-green" type="submit">Verify</button>
+        </form>
+
+        <form method="get" action="{{ url_for('login') }}" style="margin-top:10px;">
+          <button class="btn btn-secondary" type="submit">Change Email</button>
+        </form>
       </div>
 
-      <div class="login-hint">Use email OTP verification.</div>
+      <div class="login-hint">OTP expires in a few minutes.</div>
     </div>
   </main>
 </body>
 </html>
-
 

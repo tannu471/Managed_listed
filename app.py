@@ -5,10 +5,14 @@ import sqlite3
 from contextlib import closing
 from datetime import timedelta
 from functools import wraps
-
-from authlib.integrations.flask_client import OAuth
+import requests
+import smtplib
+import ssl
+import secrets
+from email.mime.text import MIMEText
 from flask import Flask, flash, g, redirect, render_template, request, session, url_for
 from werkzeug.utils import secure_filename
+
 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -22,7 +26,7 @@ MAX_RECORDS = 92
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config.update(
-        SECRET_KEY=os.environ.get("SECRET_KEY", "dev-secret-change-me"),
+        SECRET_KEY=os.environ.get("Project_secret_json", "dev-secret-change-me"),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=timedelta(days=30),
@@ -54,16 +58,7 @@ def create_app() -> Flask:
 
         return wrapped
 
-    oauth = OAuth(app)
-    oauth.register(
-        name="google",
-        client_id=os.environ.get("GOOGLE_CLIENT_ID"),
-        client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
-        access_token_url="https://oauth2.googleapis.com/token",
-        authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
-        api_base_url="https://www.googleapis.com/oauth2/v1/",
-        client_kwargs={"scope": "openid email profile"},
-    )
+
 
     @app.route("/")
     def index():
@@ -115,51 +110,91 @@ def create_app() -> Flask:
 
     @app.route("/login")
     def login():
-        return render_template("login.html")
+        return render_template("otp_login.html")
 
-    @app.route("/login/google")
-    def google_login():
-        if not os.environ.get("GOOGLE_CLIENT_ID") or not os.environ.get("GOOGLE_CLIENT_SECRET"):
-            flash("Google OAuth is not configured on the server.", "error")
-            return redirect(url_for("login"))
+    def _send_otp_email(to_email: str, otp: str):
+        otp_from = os.environ.get("OTP_FROM_EMAIL")
+        smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+        smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+        smtp_user = os.environ.get("SMTP_USER", otp_from)
+        smtp_pass = os.environ.get("SMTP_PASS")
 
-        redirect_uri = url_for("google_callback", _external=True)
-        return oauth.google.authorize_redirect(redirect_uri)
+        if not otp_from or not smtp_user or not smtp_pass:
+            raise RuntimeError("OTP email not configured. Set OTP_FROM_EMAIL, SMTP_USER and SMTP_PASS.")
 
-    @app.route("/callback/google")
-    def google_callback():
-        token = oauth.google.authorize_access_token()
-        _ = token  # unused but kept for clarity
-        userinfo = oauth.google.get("https://openidconnect.googleapis.com/v1/userinfo")
+        subject = "Your OTP Code"
+        body = f"Your one-time password (OTP) is: {otp}. It expires in a few minutes." \
+               f"\n\nIf you didn't request this, you can ignore this email."
 
-        email = (userinfo.json().get("email") or "").strip().lower()
-        sub = str(userinfo.json().get("sub") or "")
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"] = subject
+        msg["From"] = otp_from
+        msg["To"] = to_email
 
-        if not email or not sub:
-            flash("Failed to authenticate with Google.", "error")
-            return redirect(url_for("login"))
+        context = ssl.create_default_context()
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls(context=context)
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(otp_from, [to_email], msg.as_string())
 
-        # Create user on first Google login (recommended)
-        existing = g.db.execute(
-            "SELECT id FROM users WHERE email = ? OR google_sub = ?",
-            (email, sub),
+    def _get_valid_user(email: str):
+        email = (email or "").strip().lower()
+        if not email:
+            return None
+        row = g.db.execute(
+            "SELECT id FROM users WHERE email = ?",
+            (email,),
         ).fetchone()
+        if row:
+            return row["id"]
+        cur = g.db.execute(
+            "INSERT INTO users (email) VALUES (?)",
+            (email,),
+        )
+        return cur.lastrowid
 
-        if existing:
-            user_id = existing["id"]
-            g.db.execute(
-                "UPDATE users SET email = ?, google_sub = ? WHERE id = ?",
-                (email, sub, user_id),
-            )
-            g.db.commit()
-        else:
-            cur = g.db.execute(
-                "INSERT INTO users (email, google_sub) VALUES (?, ?)",
-                (email, sub),
-            )
-            user_id = cur.lastrowid
-            g.db.commit()
+    @app.route("/login/send-otp", methods=["POST"])
+    def send_otp():
+        email = (request.form.get("email") or "").strip().lower()
+        if not email:
+            flash("Email is required.", "error")
+            return redirect(url_for("login"))
 
+        otp = "".join(secrets.choice("0123456789") for _ in range(6))
+        session["otp_email"] = email
+        session["otp_code"] = otp
+
+        try:
+            _send_otp_email(email, otp)
+        except Exception:
+            session.pop("otp_code", None)
+            flash("Failed to send OTP. Check SMTP settings.", "error")
+            return redirect(url_for("login"))
+
+        return render_template("otp_verify.html", email=email)
+
+    @app.route("/login/verify-otp", methods=["POST"])
+    def verify_otp():
+        email = (request.form.get("email") or "").strip().lower()
+        otp_in = (request.form.get("otp") or "").strip()
+        otp_expected = session.get("otp_code")
+        otp_email = session.get("otp_email")
+
+        if not email or not otp_in:
+            flash("OTP and email are required.", "error")
+            return redirect(url_for("login"))
+
+        if not otp_expected or email != (otp_email or "") or otp_in != otp_expected:
+            flash("Invalid OTP. Please try again.", "error")
+            return redirect(url_for("login"))
+
+        user_id = _get_valid_user(email)
+        if not user_id:
+            flash("Login failed.", "error")
+            return redirect(url_for("login"))
+
+        session.pop("otp_code", None)
+        session.pop("otp_email", None)
         session.permanent = True
         session["user_id"] = user_id
         return redirect(url_for("index"))
@@ -436,15 +471,12 @@ def init_db():
         conn.execute("PRAGMA foreign_keys = ON")
         conn.row_factory = sqlite3.Row
 
-        # Updated users table for Google auth
-        # (We keep legacy password_hash column if it already exists.)
+        # Users table for email-OTP login
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT,
-                google_sub TEXT UNIQUE
+                email TEXT UNIQUE NOT NULL
             )
             """
         )
@@ -453,14 +485,15 @@ def init_db():
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS characters (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                character_name TEXT UNIQUE NOT NULL,
-                anime_name TEXT NOT NULL,
-                gender TEXT NOT NULL,
-                image TEXT,
-                display_order INTEGER NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            character_name TEXT NOT NULL,
+            anime_name TEXT NOT NULL,
+            gender TEXT NOT NULL,
+            image TEXT,
+            display_order INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, character_name)
             )
             """
         )

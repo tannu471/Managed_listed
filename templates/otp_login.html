@@ -22,15 +22,17 @@
       {% endwith %}
 
       <div class="login-form">
-        <a class="btn btn-primary" href="{{ url_for('login') }}">
-          Continue
-        </a>
+        <h2 class="section-title">Verify Email</h2>
+        <form method="post" action="{{ url_for('send_otp') }}">
+          <label>Email</label>
+          <input class="input" type="email" name="email" required placeholder="you@example.com" />
+          <button class="btn btn-green" type="submit">Send OTP</button>
+        </form>
       </div>
 
-      <div class="login-hint">Use email OTP verification.</div>
+      <div class="login-hint">We will send a one-time code to your email.</div>
     </div>
   </main>
 </body>
 </html>
-
 
